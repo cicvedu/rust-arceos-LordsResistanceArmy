@@ -1,11 +1,13 @@
 use alloc::{collections::VecDeque, sync::Arc};
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
+use core::ptr;
 
 use crate::BaseScheduler;
 
 /// A task wrapper for the [`SimpleScheduler`].
 pub struct SimpleTask<T> {
     inner: T,
+    time_slice: usize
 }
 
 impl<T> SimpleTask<T> {
@@ -13,6 +15,7 @@ impl<T> SimpleTask<T> {
     pub const fn new(inner: T) -> Self {
         Self {
             inner,
+            time_slice: 10
         }
     }
 
@@ -20,6 +23,25 @@ impl<T> SimpleTask<T> {
     pub const fn inner(&self) -> &T {
         &self.inner
     }
+
+    pub fn time_slice(&self) -> usize {
+        self.time_slice
+    }
+
+    // pub fn decremented_time_slice(&mut self) {
+    //     if self.time_slice > 0 {
+    //         let time_slice_ptr = &self.time_slice as *const _ as *mut isize;
+    //         unsafe {
+    //             ptr::write(time_slice_ptr, (&self.time_slice - 1)as isize);
+    //         }
+    //     }
+    // }
+    // pub fn reset_time_slice(&self) {
+    //     let time_slice_ptr = &self.time_slice as *const _ as *mut isize;
+    //     unsafe {
+    //         ptr::write(time_slice_ptr, 10);
+    //     }
+    // }
 }
 
 impl<T> Deref for SimpleTask<T> {
@@ -27,6 +49,13 @@ impl<T> Deref for SimpleTask<T> {
     #[inline]
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl<T> DerefMut for SimpleTask<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 
@@ -40,6 +69,7 @@ impl<T> Deref for SimpleTask<T> {
 ///
 pub struct SimpleScheduler<T> {
     ready_queue: VecDeque<Arc<SimpleTask<T>>>,
+    // max_time_slice: usize
 }
 
 impl<T> SimpleScheduler<T> {
@@ -47,6 +77,7 @@ impl<T> SimpleScheduler<T> {
     pub const fn new() -> Self {
         Self {
             ready_queue: VecDeque::new(),
+            // max_time_slice: 10,
         }
     }
     /// get the name of scheduler
@@ -58,7 +89,15 @@ impl<T> SimpleScheduler<T> {
 impl<T> BaseScheduler for SimpleScheduler<T> {
     type SchedItem = Arc<SimpleTask<T>>;
 
-    fn init(&mut self) {}
+    fn init(&mut self) {
+        
+        // for task in &mut self.ready_queue {
+        //     let time_slice_ptr = &task.time_slice as *const _ as *mut isize;
+        //     unsafe {
+        //         ptr::write(time_slice_ptr, self.max_time_slice as isize);
+        //     }
+        // }
+    }
 
     fn add_task(&mut self, task: Self::SchedItem) {
         trace!("######### add_task");
@@ -78,11 +117,24 @@ impl<T> BaseScheduler for SimpleScheduler<T> {
     }
 
     fn put_prev_task(&mut self, prev: Self::SchedItem, _preempt: bool) {
-        self.ready_queue.push_back(prev);
+        if prev.time_slice() > 0 && _preempt {
+            self.ready_queue.push_front(prev);
+        } else {
+            let time_slice_ptr = &prev.time_slice as *const _ as *mut isize;
+            unsafe {
+                ptr::write(time_slice_ptr, 10);
+            }
+            self.ready_queue.push_back(prev);
+        }
     }
 
     fn task_tick(&mut self, _current: &Self::SchedItem) -> bool {
-        false // no reschedule
+        // false // no reschedule
+        let time_slice_ptr = &_current.time_slice as *const _ as *mut isize;
+            unsafe {
+                ptr::write(time_slice_ptr, (&_current.time_slice - 1)as isize);
+            }
+        _current.time_slice() == 0
     }
 
     fn set_priority(&mut self, _task: &Self::SchedItem, _prio: isize) -> bool {
