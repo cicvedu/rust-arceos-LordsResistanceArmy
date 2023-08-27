@@ -90,6 +90,7 @@ impl<T> BaseScheduler for SimpleScheduler<T> {
     type SchedItem = Arc<SimpleTask<T>>;
 
     fn init(&mut self) {
+        
         // for task in &mut self.ready_queue {
         //     let time_slice_ptr = &task.time_slice as *const _ as *mut isize;
         //     unsafe {

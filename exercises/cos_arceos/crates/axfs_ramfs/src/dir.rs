@@ -69,6 +69,10 @@ impl DirNode {
     }
 }
 
+use core::clone::Clone;
+use core::option::Option;
+use core::result::Result;
+
 impl VfsNodeOps for DirNode {
     fn get_attr(&self) -> VfsResult<VfsNodeAttr> {
         Ok(VfsNodeAttr::new_dir(4096, 0))
@@ -166,7 +170,68 @@ impl VfsNodeOps for DirNode {
     }
 
     fn rename(&self, _src: &str, _dst: &str) -> VfsResult {
-        todo!("Implement rename for ramfs!");
+        // todo!("Implement rename for ramfs!");
+        let (src_name, src_rest) = split_path(_src);
+        let (dst_name, dst_rest) = split_path(_dst);
+
+        if src_name.is_empty() || dst_name.is_empty() {
+            return Err(VfsError::InvalidInput);
+        }
+
+        let src_node = match src_name {
+            "" | "." => self.clone() as VfsNodeRef,
+            ".." => self.parent().ok_or(VfsError::NotFound)?,
+            _ => self
+                .children
+                .read()
+                .get(src_name)
+                .cloned()
+                .ok_or(VfsError::NotFound)?,
+        };
+
+        if let Some(src_rest) = src_rest {
+            let src_dir = src_node
+                .as_any()
+                .downcast_ref::<DirNode>()
+                .ok_or(VfsError::NotDirectory)?;
+            return src_dir.rename(src_rest, _dst);
+        }
+
+        let dst_node = match dst_name {
+            "" | "." => self.clone() as VfsNodeRef,
+            ".." => self.parent().ok_or(VfsError::NotFound)?,
+            _ => self
+                .children
+                .read()
+                .get(dst_name)
+                .cloned()
+                .ok_or(VfsError::NotFound)?,
+        };
+
+        if let Some(dst_rest) = dst_rest {
+            let dst_dir = dst_node
+                .as_any()
+                .downcast_ref::<DirNode>()
+                .ok_or(VfsError::NotDirectory)?;
+            return dst_dir.rename(_src, dst_rest);
+        }
+
+        let mut children = self.children.write();
+        if children.contains_key(dst_name) {
+            return Err(VfsError::AlreadyExists);
+        }
+
+        let src_attr = src_node.get_attr()?;
+        let dst_attr = dst_node.get_attr()?;
+        if src_attr.file_type() != dst_attr.file_type() {
+            return Err(VfsError::InvalidInput);
+        }
+
+        children.remove(src_name);
+        children.insert(dst_name.into(), src_node);
+
+        Ok(())
+
     }
 
     axfs_vfs::impl_vfs_dir_default! {}
